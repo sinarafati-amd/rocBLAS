@@ -1,0 +1,37 @@
+source_file_path: &id001
+- library/src/blas2/rocblas_trsv.cpp
+- library/src/blas2/rocblas_trsv.hpp
+- library/src/blas2/rocblas_trsv_imp.hpp
+- library/src/blas2/rocblas_trsv_kernels.cpp
+- library/src/include/rocblas_ostream.hpp
+- library/src/include/check_numerics_matrix.hpp
+- library/src/include/check_numerics_vector.hpp
+- library/src/include/definitions.hpp
+- library/src/include/device_macros.hpp
+- library/src/include/handle.hpp
+- library/src/include/int64_helpers.hpp
+- library/src/include/logging.hpp
+- library/src/include/macros.hpp
+- library/src/include/tuple_helper.hpp
+- library/src/include/utility.hpp
+gen_file_path: *id001
+target_kernel_functions:
+- __launch_bounds__
+- rocblas_array2_t_impl
+- rocblas_batched_t_impl
+- rocblas_const_batched_t_impl
+- rocblas_internal_check_numerics_matrix_template
+- rocblas_internal_check_numerics_vector_template
+- rocblas_internal_trsv_batched_template
+- rocblas_internal_trsv_substitution_template
+- rocblas_internal_trsv_template
+- rocblas_real_t_impl
+- rocblas_trsv_impl
+- rocblas_type_from_ptr_t_impl
+compile_command:
+- ./install.sh --architecture gfx942 --clients --relwithdebinfo
+correctness_command:
+- build/release-debug/clients/staging/rocblas-test --gtest_filter="*TRSV.*"
+performance_command:
+- rocprof-compute profile -n kernelgen --path rocprof_compute_profile --no-roof --join-type kernel -b SQ -b TCP -b TCC -- build/release-debug/clients/staging/rocblas-bench -f trsv -r s -m 3000 -n 3000 --lda 3000 --iters 2
+- rocprof-compute analyze --path rocprof_compute_profile -b 2
