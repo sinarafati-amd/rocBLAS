@@ -22,6 +22,21 @@
 
 cmake_minimum_required( VERSION 3.16.8 )
 
+# Enable ccache if available
+find_program(CCACHE_FOUND ccache)
+if(CCACHE_FOUND)
+    message(STATUS "Found ccache: ${CCACHE_FOUND}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_FOUND}")
+    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_FOUND}")
+
+    # Enable ccache for HIP compilation
+    set(CMAKE_HIP_COMPILER_LAUNCHER "${CCACHE_FOUND}")
+
+    message(STATUS "ccache enabled for C/C++/HIP compilation")
+else()
+    message(STATUS "ccache not available - compilation will not be cached")
+endif()
+
 
 # This has to be initialized before the project() command appears
 # Set the default of CMAKE_BUILD_TYPE to be release, unless user specifies with -D.  MSVC_IDE does not use CMAKE_BUILD_TYPE
@@ -145,9 +160,9 @@ endif()
 set( GPU_TARGETS "${target_list}" CACHE STRING "List of GPUs (gfx targets) to support" FORCE )
 set( AMDGPU_TARGETS "${GPU_TARGETS}" CACHE STRING "List of GPUs (gfx targets) to support" FORCE ) # for old hip cmake files backward compatibility
 
-option( BUILD_WITH_HIPBLASLT "Build with HipBLASLt" ON )
+option( BUILD_WITH_HIPBLASLT "Build with HipBLASLt" OFF )
 set( hipblaslt_path "/opt/rocm" CACHE PATH "Use local HipBLASLt directory" )
-set( HIPBLASLT_VERSION 1.0.0 CACHE STRING "The version of HipBLASLt to be used" )
+set( HIPBLASLT_VERSION 0.12.0 CACHE STRING "The version of HipBLASLt to be used" )
 
 if( WIN32 OR NOT BUILD_WITH_TENSILE OR NOT BUILD_SHARED_LIBS )
   set( BUILD_WITH_HIPBLASLT OFF )
@@ -156,7 +171,7 @@ endif()
 if( NOT SKIP_LIBRARY )
   if(BUILD_WITH_HIPBLASLT)
     # don't wait until after Tensile to find hipblaslt if enabled
-    find_package( hipblaslt ${HIPBLASLT_VERSION} REQUIRED CONFIG PATHS ${hipblaslt_path} ${ROCM_PATH})
+    find_package( hipblaslt ${HIPBLASLT_VERSION} CONFIG PATHS ${hipblaslt_path} ${ROCM_PATH})
     message(STATUS "FOUND hipBLASLt, INCLUDE_DIR: ${HIPBLASLT_INCLUDE_DIR}")
   endif()
 endif()

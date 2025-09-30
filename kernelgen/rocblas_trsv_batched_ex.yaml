@@ -38,9 +38,9 @@ target_kernel_functions:
 - rocblas_trsv_batched_ex_impl
 - rocblas_type_from_ptr_t_impl
 compile_command:
-- ./install.sh --architecture gfx942 --clients --relwithdebinfo
+- ./install.sh --architecture gfx942 --clients --relwithdebinfo --no_hipblaslt
 correctness_command:
-- build/release-debug/clients/staging/rocblas-test --gtest_filter="*TRSV_BATCHED_EX.*"
+- build/release-debug/clients/staging/rocblas-bench -f trsv -r s -n 10 --verify 1 --iters 1
 performance_command:
-- rocprof-compute profile -n kernelgen --path rocprof_compute_profile --no-roof --join-type kernel -b SQ -b TCP -b TCC -- build/release-debug/clients/staging/rocblas-bench -f trsv -r s -m 3000 -n 3000 --lda 3000 --iters 2
-- rocprof-compute analyze --path rocprof_compute_profile -b 2
+- /opt/rocm/bin/rocprof-compute profile -n kernelgen --path rocprof_compute_profile --no-roof --join-type kernel -b SQ -b TCP -b TCC -- build/release-debug/clients/staging/rocblas-bench -f trsv -r s -m 3000 -n 3000 --lda 3000 --iters 2
+- /opt/rocm/bin/rocprof-compute analyze --path rocprof_compute_profile -b 2
