@@ -64,6 +64,22 @@ GENERIC_KERNEL_BLACKLIST = {
     'rocblas_larf_template',   # Host function orchestrating LARF operations
     'rocblas_larfg_template',  # Host function orchestrating LARFG operations
 
+    # rocBLAS-specific: Type/struct helper implementations (abstraction layer, not optimization targets)
+    '__launch_bounds__',  # Compiler directive, not a function
+    'rocblas_array2_t_impl',  # Array abstraction struct
+    'rocblas_batched_t_impl',  # Batched abstraction struct
+    'rocblas_const_batched_t_impl',  # Const batched abstraction struct
+    'rocblas_real_t_impl',  # Real type abstraction
+    'rocblas_type_from_ptr_t_impl',  # Type inference helper
+
+    # rocBLAS-specific: Generic check/validation functions
+    'rocblas_internal_check_numerics_vector_template',  # Generic numerics validation
+    'rocblas_internal_check_numerics_matrix_template',  # Generic matrix validation
+
+    # rocBLAS-specific: Complex datatype templates (not optimizing for complex types)
+    'rocblas_internal_dotc_template',  # Complex conjugate dot product
+    'rocblas_internal_dotc_batched_template',  # Batched complex conjugate dot
+
     # Note: We keep performance-critical kernels like:
     # - Function-specific kernels with prefixes like gemm_*, axpy_*, etc.
     # - set_taubeta/run_set_taubeta (numerical algorithms with optimization potential)
@@ -152,6 +168,7 @@ def filter_kernels_by_algorithm_relevance(kernels: List[str], target_function: s
     """
     Filter kernel functions to only include those relevant to the target algorithm.
     Removes kernels from different algorithm categories to prevent cross-contamination.
+    Also removes batched routines and experimental "ex" functions.
 
     Args:
         kernels: List of kernel function names
@@ -166,6 +183,16 @@ def filter_kernels_by_algorithm_relevance(kernels: List[str], target_function: s
     for kernel in kernels:
         # Skip kernels that are in blacklist
         if kernel in GENERIC_KERNEL_BLACKLIST:
+            continue
+
+        # Skip batched routines (not optimizing for batched operations currently)
+        if '_batched_template' in kernel.lower():
+            print(f"    Removing batched routine: {kernel}")
+            continue
+
+        # Skip experimental "ex" functions (mixed-precision, not high priority for optimization)
+        if kernel.endswith('_ex_impl') or kernel.endswith('_ex_template'):
+            print(f"    Removing experimental ex function: {kernel}")
             continue
 
         # Check for cross-contamination
@@ -252,40 +279,45 @@ def prioritize_source_files(file_paths: List[str], target_kernels: List[str]) ->
 
     return prioritized_files, file_priorities
 
-def get_base_function_names(blas_dirs: List[str]) -> Dict[str, List[str]]:
+def get_base_function_names(blas_dirs: List[str], skip_ex_functions: bool = True) -> Dict[str, List[str]]:
     """
     Get all unique base function names from the blas directories.
     Groups related files (base, batched, kernels, etc.) together.
     Ignores files with _strided and _strided_batched suffixes.
+    Optionally skips _ex functions (experimental mixed-precision operations).
     """
     function_groups = {}
-    
+
     for blas_dir in blas_dirs:
         for file_path in Path(blas_dir).glob("*.cpp"):
             filename = file_path.stem  # filename without extension
-            
+
             # Remove the rocblas_ prefix
             if filename.startswith("rocblas_"):
                 func_name = filename[8:]  # Remove "rocblas_"
-                
+
+                # Skip experimental _ex functions (mixed-precision, low priority)
+                if skip_ex_functions and (func_name.endswith("_ex") or "_ex_" in func_name):
+                    continue
+
                 # Skip files with _strided or _strided_batched suffixes
                 if "_strided_batched" in func_name or func_name.endswith("_strided") or func_name.endswith("_batched"):
                     continue
-                
+
                 # Identify the base function name (without _batched, _kernels, etc.)
                 base_name = func_name
                 for suffix in ["_batched", "_ptr_batched", "_kernels",
-                              "_interleaved_batched", "_outofplace", "_info32", 
+                              "_interleaved_batched", "_outofplace", "_info32",
                               "_notransv", "_inplace"]:
                     if func_name.endswith(suffix):
                         base_name = func_name[:func_name.rfind(suffix)]
                         break
-                
+
                 if base_name not in function_groups:
                     function_groups[base_name] = []
-                
+
                 function_groups[base_name].append(str(file_path))
-    
+
     return function_groups
 
 def normalize_path(path: str) -> str:
@@ -354,10 +386,10 @@ def find_header_dependencies(file_paths: List[str], ignore_patterns: List[str] =
         try:
             with open(file_path, 'r') as f:
                 content = f.read()
-            
+
             # Find all include statements
             includes = re.findall(include_pattern, content)
-            
+
             for include in includes:
                 # Check if this include should be ignored
                 should_ignore = False
@@ -365,7 +397,7 @@ def find_header_dependencies(file_paths: List[str], ignore_patterns: List[str] =
                     if pattern in include:
                         should_ignore = True
                         break
-                
+
                 if not should_ignore and include.endswith('.hpp'):
                     # Try to find the full path of the header
                     if not include.startswith('/'):
@@ -378,7 +410,7 @@ def find_header_dependencies(file_paths: List[str], ignore_patterns: List[str] =
                             f"library/src/blas_ex/{include}",
                             f"library/src/{include}"
                         ]
-                        
+
                         for possible_path in possible_paths:
                             if os.path.exists(possible_path):
                                 # Normalize the path before adding
@@ -390,7 +422,7 @@ def find_header_dependencies(file_paths: List[str], ignore_patterns: List[str] =
                                 break
         except Exception as e:
             print(f"Error analyzing dependencies in {file_path}: {e}")
-    
+
     return dependencies
 
 def find_kernel_functions(file_paths: List[str]) -> List[str]:
@@ -461,7 +493,7 @@ def get_test_filter(base_name: str) -> str:
     # Convert function name to uppercase for test filter
     # Handle special cases where function names have multiple parts
     parts = base_name.upper().split('_')
-    
+
     # For functions like syevd_heevd, create pattern like *SYEVD.*:*HEEVD.*
     if len(parts) == 2 and parts[0] != parts[1]:
         return f'"*{parts[0]}.*:*{parts[1]}.*"'
@@ -495,7 +527,7 @@ def generate_yaml_config(base_name: str, files: List[str], existing_yaml_path: s
         except Exception as e:
             print(f"  Warning: Could not load existing YAML: {e}")
             existing_config = None
-    
+
     # Determine source and gen file paths
     source_files = []
     gen_files = []
@@ -505,7 +537,7 @@ def generate_yaml_config(base_name: str, files: List[str], existing_yaml_path: s
         # Main function files
         cpp_file = f"library/src/{blas_dir}/rocblas_{base_name}.cpp"
         hpp_file = f"library/src/{blas_dir}/rocblas_{base_name}.hpp"
-        
+
         if os.path.exists(cpp_file):
             source_files.append(normalize_path(cpp_file))
             gen_files.append(normalize_path(cpp_file))
@@ -513,11 +545,11 @@ def generate_yaml_config(base_name: str, files: List[str], existing_yaml_path: s
         if os.path.exists(hpp_file):
             source_files.append(normalize_path(hpp_file))
             gen_files.append(normalize_path(hpp_file))
-        
+
         # Kernel files
         kernels_cpp = f"library/src/{blas_dir}/rocblas_{base_name}_kernels.cpp"
         kernels_hpp = f"library/src/{blas_dir}/rocblas_{base_name}_kernels.hpp"
-        
+
         if os.path.exists(kernels_cpp):
             source_files.append(normalize_path(kernels_cpp))
             gen_files.append(normalize_path(kernels_cpp))
@@ -525,7 +557,7 @@ def generate_yaml_config(base_name: str, files: List[str], existing_yaml_path: s
         if os.path.exists(kernels_hpp):
             source_files.append(normalize_path(kernels_hpp))
             gen_files.append(normalize_path(kernels_hpp))
-        
+
         # Implementation files
         imp_hpp = f"library/src/{blas_dir}/rocblas_{base_name}_imp.hpp"
         if os.path.exists(imp_hpp):
@@ -561,7 +593,7 @@ def generate_yaml_config(base_name: str, files: List[str], existing_yaml_path: s
 
     all_source_files = list(all_source_files_set)
     all_source_files.sort()  # Sort for consistent ordering
-    
+
     # Find kernel functions in all source files including dependencies
     # We search in all_source_files to include GPU kernels from dependencies
     all_kernels = find_kernel_functions(all_source_files)
@@ -584,7 +616,7 @@ def generate_yaml_config(base_name: str, files: List[str], existing_yaml_path: s
         print(f"  Limiting source files from {len(all_source_files)} to {MAX_SOURCE_FILES} for LLM optimization")
         # Keep essential files and top priority supporting files
         all_source_files = all_source_files[:MAX_SOURCE_FILES]
-    
+
     # If existing config exists, preserve commands and only update paths/functions
     if existing_config:
         config = existing_config.copy()
@@ -597,13 +629,13 @@ def generate_yaml_config(base_name: str, files: List[str], existing_yaml_path: s
         # Create new config with default values
         # Generate test filter
         test_filter = get_test_filter(base_name)
-        
+
         # Generate bench function name
         bench_func = get_bench_function_name(base_name)
-        
+
         config = {
             'source_file_path': all_source_files,  # Include dependencies for analysis
-            'gen_file_path': all_source_files, 
+            'gen_file_path': all_source_files,
             'target_kernel_functions': target_functions,
             'compile_command': [
                 './install.sh --architecture gfx942 --clients --relwithdebinfo'
@@ -617,36 +649,37 @@ def generate_yaml_config(base_name: str, files: List[str], existing_yaml_path: s
             ]
         }
         print(f"  Created new config with default commands")
-    
+
     return config
 
 def main():
     blas_dirs = [
         "library/src/blas1",
-        "library/src/blas2", 
+        "library/src/blas2",
         "library/src/blas3",
         "library/src/blas_ex"
     ]
     # Output YAML files to parent kernelgen directory (not tools/)
     output_dir = "kernelgen"
-    
+
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
-    
-    # Get all function groups
-    function_groups = get_base_function_names(blas_dirs)
-    
+
+    # Get all function groups (skip experimental _ex functions by default)
+    # Set skip_ex_functions=False if you want to include mixed-precision operations
+    function_groups = get_base_function_names(blas_dirs, skip_ex_functions=True)
+
     print(f"Found {len(function_groups)} unique function groups")
-    
+
     # Generate YAML config for each function group
     generated_count = 0
     updated_count = 0
     for base_name, files in function_groups.items():
         output_file = os.path.join(output_dir, f"rocblas_{base_name}.yaml")
-        
+
         # Check if file already exists
         file_exists = os.path.exists(output_file)
-        
+
         if file_exists:
             print(f"Updating {base_name} - preserving existing commands")
             config = generate_yaml_config(base_name, files, output_file)
@@ -655,11 +688,11 @@ def main():
             print(f"Creating new config for {base_name}")
             config = generate_yaml_config(base_name, files)
             generated_count += 1
-        
+
         # Only write if we have valid source files
         if config['source_file_path']:
             with open(output_file, 'w') as f:
-                yaml.dump(config, f, default_flow_style=False, sort_keys=False, 
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False,
                          allow_unicode=True, width=1000)
             if file_exists:
                 print(f"Updated: {output_file}")
@@ -667,7 +700,7 @@ def main():
                 print(f"Generated: {output_file}")
         else:
             print(f"Skipping {base_name} - no source files found")
-    
+
     print(f"\nSummary:")
     print(f"  Generated {generated_count} new YAML configuration files")
     print(f"  Updated {updated_count} existing YAML configuration files")

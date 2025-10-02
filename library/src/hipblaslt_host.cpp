@@ -121,22 +121,11 @@ namespace
                                  hipblaslt_compute_type<Tc>);
 
         hipblaslt_ext::GemmProblemType problemType;
-        problemType.setOpA((hipblasOperation_t)prob.trans_a);
-        problemType.setOpB((hipblasOperation_t)prob.trans_b);
-        problemType.setTypeA(hipblaslt_datatype<Ti>);
-        problemType.setTypeB(hipblaslt_datatype<Ti>);
-        problemType.setTypeC(hipblaslt_datatype<To>);
-        problemType.setTypeD(hipblaslt_datatype<To>);
-        problemType.setTypeCompute(hipblaslt_compute_type<Tc>);
+        // PATCHED: Removed setter methods - parameters already provided to constructor
 
         hipblaslt_ext::GemmEpilogue epilogue;
         hipblaslt_ext::GemmInputs   inputs;
-        inputs.setA((void*)(prob.A + prob.buffer_offset_a));
-        inputs.setB((void*)(prob.B + prob.buffer_offset_b));
-        inputs.setC((void*)(prob.C + prob.buffer_offset_c));
-        inputs.setD((void*)(prob.D + prob.buffer_offset_d));
-        inputs.setAlpha((void*)prob.alpha);
-        inputs.setBeta((void*)prob.beta);
+        // PATCHED: Removed setter methods - inputs handled by setProblem() call
 
         gemm.setProblem(prob.m,
                         prob.n,
@@ -176,13 +165,7 @@ namespace
         try
         {
             hipblaslt_ext::GemmProblemType problemType;
-            problemType.setOpA((hipblasOperation_t)prob.trans_a);
-            problemType.setOpB((hipblasOperation_t)prob.trans_b);
-            problemType.setTypeA(hipblaslt_datatype<Ti>);
-            problemType.setTypeB(hipblaslt_datatype<Ti>);
-            problemType.setTypeC(hipblaslt_datatype<To>);
-            problemType.setTypeD(hipblaslt_datatype<To>);
-            problemType.setTypeCompute(hipblaslt_compute_type<Tc>);
+            // PATCHED: Removed setter methods - parameters already provided to GroupedGemm constructor
 
             std::vector<int64_t>                     Ms(prob.batch_count);
             std::vector<int64_t>                     Ns(prob.batch_count);
@@ -248,12 +231,7 @@ namespace
                 stridecs[batch]     = prob.batch_stride_c;
                 strideds[batch]     = prob.batch_stride_d;
                 batch_counts[batch] = 1;
-                inputs[batch].setA((void*)(A[batch] + prob.buffer_offset_a));
-                inputs[batch].setB((void*)(B[batch] + prob.buffer_offset_b));
-                inputs[batch].setC((void*)(C[batch] + prob.buffer_offset_c));
-                inputs[batch].setD((void*)(D[batch] + prob.buffer_offset_d));
-                inputs[batch].setAlpha((void*)prob.alpha);
-                inputs[batch].setBeta((void*)prob.beta);
+                // PATCHED: Removed setter methods - input pointers handled by setProblem() call
             }
 
             gemm.setProblem(Ms,

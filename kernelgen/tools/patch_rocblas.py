@@ -188,6 +188,69 @@ def patch_kernel_file(file_path):
             f.write(content)
         print(f"Patched {file_path} with profiling markers")
 
+def patch_hipblaslt_host():
+    """Patch hipblaslt_host.cpp to fix API compatibility issues"""
+    hipblaslt_file = "library/src/hipblaslt_host.cpp"
+    if not os.path.exists(hipblaslt_file):
+        print(f"Warning: {hipblaslt_file} not found, skipping hipBLASLT patch")
+        return
+
+    backup_file(hipblaslt_file)
+
+    with open(hipblaslt_file, 'r') as f:
+        lines = f.readlines()
+
+    # Check if already patched
+    if any("// PATCHED: Removed setter methods" in line for line in lines):
+        print(f"{hipblaslt_file} already patched for hipBLASLT API compatibility")
+        return
+
+    # Process line by line to remove setter method calls
+    new_lines = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        # Skip setter method calls for problemType
+        if "problemType.setOpA(" in line:
+            # Skip all setter calls until setTypeCompute
+            while i < len(lines) and "problemType.setTypeCompute(" not in lines[i]:
+                i += 1
+            if i < len(lines):
+                i += 1  # Skip the setTypeCompute line too
+            new_lines.append("        // PATCHED: Removed setter methods - parameters already provided to constructor\n")
+            continue
+
+        # Skip setter method calls for inputs
+        elif "inputs.setA(" in line:
+            # Skip all setter calls until setBeta
+            while i < len(lines) and "inputs.setBeta(" not in lines[i]:
+                i += 1
+            if i < len(lines):
+                i += 1  # Skip the setBeta line too
+            new_lines.append("        // PATCHED: Removed setter methods - inputs handled by setProblem() call\n")
+            continue
+
+        # Skip setter method calls for inputs[batch]
+        elif "inputs[batch].setA(" in line:
+            # Skip all setter calls until setBeta
+            while i < len(lines) and "inputs[batch].setBeta(" not in lines[i]:
+                i += 1
+            if i < len(lines):
+                i += 1  # Skip the setBeta line too
+            new_lines.append("                // PATCHED: Removed setter methods - input pointers handled by setProblem() call\n")
+            continue
+
+        else:
+            new_lines.append(line)
+
+        i += 1
+
+    with open(hipblaslt_file, 'w') as f:
+        f.writelines(new_lines)
+
+    print(f"Patched {hipblaslt_file} for hipBLASLT API compatibility")
+
 def detect_hipblaslt_version():
     """Detect the installed hipblaslt version"""
     try:
@@ -242,6 +305,7 @@ def main():
     patch_install_script()
     patch_library_cmake()
     patch_kernel_files()
+    patch_hipblaslt_host()
 
     print(f"Patching completed! Ready to build with hipblaslt {hipblaslt_version}")
 

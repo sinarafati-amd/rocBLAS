@@ -18,30 +18,20 @@ source_file_path: &id001
 - library/src/include/utility.hpp
 gen_file_path: *id001
 target_kernel_functions:
-- __launch_bounds__
-- rocblas_array2_t_impl
-- rocblas_batched_t_impl
-- rocblas_const_batched_t_impl
 - rocblas_gemm_flags_fp16_alt_impl
-- rocblas_internal_check_numerics_matrix_template
-- rocblas_internal_check_numerics_vector_template
-- rocblas_internal_gemm_batched_template
 - rocblas_internal_gemm_template
-- rocblas_internal_trmm_batched_template
 - rocblas_internal_trmm_outofplace_template
 - rocblas_internal_trmm_recursive_template
 - rocblas_internal_trmm_template
-- rocblas_real_t_impl
 - rocblas_set_matrix_zero_if_alpha_zero_template
 - rocblas_status_not_impl
 - rocblas_trmm_impl
 - rocblas_trmm_outofplace_template
 - rocblas_trmm_template
-- rocblas_type_from_ptr_t_impl
 compile_command:
-- ./install.sh --architecture gfx942 --clients --relwithdebinfo --no_hipblaslt
+- ./install.sh --architecture gfx942 --clients --relwithdebinfo
 correctness_command:
-- build/release-debug/clients/staging/rocblas-bench -f trmm -r s -n 10 --verify 1 --iters 1
+- build/release-debug/clients/staging/rocblas-test --gtest_filter="*TRMM.*"
 performance_command:
-- /opt/rocm/bin/rocprof-compute profile -n kernelgen --path rocprof_compute_profile --no-roof --join-type kernel -b SQ -b TCP -b TCC -- build/release-debug/clients/staging/rocblas-bench -f trmm -r s -m 3000 -n 3000 --lda 3000 --iters 2
-- /opt/rocm/bin/rocprof-compute analyze --path rocprof_compute_profile -b 2
+- rocprof-compute profile -n kernelgen --path rocprof_compute_profile --no-roof --join-type kernel -b SQ -b TCP -b TCC -- build/release-debug/clients/staging/rocblas-bench -f trmm -r s -m 3000 -n 3000 --lda 3000 --iters 2
+- rocprof-compute analyze --path rocprof_compute_profile -b 2
